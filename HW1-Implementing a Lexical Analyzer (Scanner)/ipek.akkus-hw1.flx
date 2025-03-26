@@ -1,0 +1,141 @@
+
+   /* Definitions Section */
+%{
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+int line_number = 1;
+int comment_level = 0;
+%}
+
+    /* Options */
+%option noyywrap
+
+   /* Regular definitions */
+digit       [0-9]
+letter      [a-zA-Z]
+identifier  {letter}({letter}|{digit}|"_")*
+integer     {digit}+
+date	    {digit}{1,2}"."{digit}{1,2}"."{digit}{4}
+time        {digit}{1,2}"."{digit}{1,2}
+whitespace  [ \t\r\n]
+
+    /* Rules section */
+%%
+
+    /* Handle comments first */
+"//".*      { /* Do nothing, ignore it */ }
+
+"/*"        {
+              comment_level++; /* Multi-line comment start */
+            }
+
+"*/"        {
+              if(comment_level > 0) {
+                comment_level--;
+              } else {
+                printf("%d_ILLEGAL_CHARACTER_(*)\n", line_number);
+                printf("%d_ILLEGAL_CHARACTER_(/)\n", line_number);
+              }
+            }
+
+    /* Keywords - only match if not in a comment */
+"Meeting"        { if(comment_level == 0) printf("%d_tSTARTMEETING\n", line_number); }
+"endMeeting"     { if(comment_level == 0) printf("%d_tENDMEETING\n", line_number); }
+"subMeetings"    { if(comment_level == 0) printf("%d_tSTARTSUBMEETINGS\n", line_number); }
+"endSubMeetings" { if(comment_level == 0) printf("%d_tENDSUBMEETINGS\n", line_number); }
+"meetingNumber"  { if(comment_level == 0) printf("%d_tMEETINGNUMBER\n", line_number); }
+"description"    { if(comment_level == 0) printf("%d_tDESCRIPTION\n", line_number); }
+"startDate"      { if(comment_level == 0) printf("%d_tSTARTDATE\n", line_number); }
+"endDate"        { if(comment_level == 0) printf("%d_tENDDATE\n", line_number); }
+"startTime"      { if(comment_level == 0) printf("%d_tSTARTTIME\n", line_number); }
+"endTime"        { if(comment_level == 0) printf("%d_tENDTIME\n", line_number); }
+"locations"      { if(comment_level == 0) printf("%d_tLOCATIONS\n", line_number); }
+"isRecurring"    { if(comment_level == 0) printf("%d_tISRECURRING\n", line_number); }
+"frequency"      { if(comment_level == 0) printf("%d_tFREQUENCY\n", line_number); }
+"repetitionCount" { if(comment_level == 0) printf("%d_tREPETITIONCOUNT\n", line_number); }
+
+    /* Values */
+"daily"          { if(comment_level == 0) printf("%d_tDAILY\n", line_number); }
+"weekly"         { if(comment_level == 0) printf("%d_tWEEKLY\n", line_number); }
+"monthly"        { if(comment_level == 0) printf("%d_tMONTHLY\n", line_number); }
+"yearly"         { if(comment_level == 0) printf("%d_tYEARLY\n", line_number); }
+"yes"            { if(comment_level == 0) printf("%d_tYES\n", line_number); }
+"no"             { if(comment_level == 0) printf("%d_tNO\n", line_number); }
+
+    /* Operators and punctuation */
+"="              { if(comment_level == 0) printf("%d_tASSIGN\n", line_number); }
+","              { if(comment_level == 0) printf("%d_tCOMMA\n", line_number); }
+
+    /* Identifiers, strings, integers, dates, and times */
+{identifier}     { if(comment_level == 0) printf("%d_tIDENTIFIER_(%s)\n", line_number, yytext); }
+{integer}        { if(comment_level == 0) printf("%d_tINTEGER_(%s)\n", line_number, yytext); }
+{date}	         { if(comment_level == 0) printf("%d_tDATE_(%s)\n", line_number, yytext); }
+{time}           { if(comment_level == 0) printf("%d_tTIME_(%s)\n", line_number, yytext); }
+
+     /* Handle strings with proper open/close quotes */
+\"              {
+                  if(comment_level == 0) {
+                    char buffer[2048];
+                    int i = 0;
+                    int c;
+                    int start_line = line_number;
+                    
+			/* Read until next quote or EOF */
+		    while((c = input()) != 0 && c != '\"') {
+			if(i < 2047) {
+				buffer[i++] = c;
+			}
+			if(c == '\n') {
+				line_number++;
+			}
+		    }
+                                
+                    buffer[i] = '\0';
+                    
+                    if(c == '\"') {
+			/* Properly closed string: include both opening and closing quotes */
+                      printf("%d_tSTRING_(\"%s\")\n", start_line, buffer);
+                    } else {
+                      /* Unclosed string - treat rest as part of string */
+                      printf("%d_tSTRING_(\"%s)\n", start_line, buffer);
+                    }
+                  }
+                }
+
+      /* Whitespace */
+{whitespace}     {
+                  /* Count newlines in the matched text */
+                  for (int i = 0; yytext[i] != '\0'; i++) {
+                    if (yytext[i] == '\n') {
+                      line_number++;
+                    }
+                  }
+                  /* Skip the whitespace (no output) */
+                }
+
+       /* Catch-all Rule */
+.               {
+                  if(comment_level == 0) {
+                    printf("%d_ILLEGAL_CHARACTER_(%c)\n", line_number, *yytext);
+                  }
+		  else {
+		    /* If within a comment, still update line numbers */
+		    if(*yytext == '\n')
+			line_number++;
+		  } 
+                }
+
+<<EOF>> {
+	return 0;
+}
+
+
+%%
+
+    /* C code section */
+int main() {
+  yylex();
+  return 0;
+}
